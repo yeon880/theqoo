@@ -1,5 +1,6 @@
 FROM node:20-slim
 
+# Playwright 의존성 + 한글 폰트 등 설치
 RUN apt-get update && apt-get install -y \
   libnss3 libatk-bridge2.0-0 libgtk-3-0 libdrm2 libxkbcommon0 libgbm1 \
   libasound2 libxshmfence1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
@@ -9,11 +10,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# 종속성 설치 + 브라우저 설치 한꺼번에
 COPY package.json ./
-
-# 👇 playwright 먼저 설치
 RUN npm install && npx playwright install --with-deps chromium
 
+# 나머지 코드 복사
 COPY . .
 
 ENV NODE_ENV=production
