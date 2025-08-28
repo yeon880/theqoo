@@ -1,25 +1,30 @@
 FROM node:20-slim
 
-# Playwright가 필요한 시스템 패키지 설치 + 한글 폰트
+# 필수 패키지 설치 (Playwright 실행 + 한글 폰트)
 RUN apt-get update && apt-get install -y \
-  wget gnupg curl unzip \
-  libnss3 libatk-bridge2.0-0 libgtk-3-0 libdrm2 libxkbcommon0 libgbm1 \
-  libasound2 libxshmfence1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-  libpango-1.0-0 libpangocairo-1.0-0 libcairo2 fonts-noto-cjk \
-  ca-certificates \
+    libnss3 libatk-bridge2.0-0 libgtk-3-0 libdrm2 libxkbcommon0 libgbm1 \
+    libasound2 libxshmfence1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libpango-1.0-0 libpangocairo-1.0-0 libcairo2 fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
 
+# 작업 디렉토리
 WORKDIR /app
 
-# 종속성 설치
+# Node.js 의존성 설치
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install
 
-# 전체 코드 복사
+# 코드 복사
 COPY . .
 
-# 🔥 여기서 Playwright + Chromium 브라우저 설치
+# Playwright 브라우저 설치
 RUN npx playwright install --with-deps chromium
 
+# 환경변수로 production 설정 (필요시)
 ENV NODE_ENV=production
+
+# 포트 노출 (안 써도 됨, 웹서버 없으면)
+EXPOSE 3000
+
+# 실행 명령
 CMD ["npm", "start"]
