@@ -1,11 +1,12 @@
 {
-  name theqoo-fetcher,
-  type module,
-  dependencies {
-    express ^4.19.2,
-    playwright ^1.46.0
+  "name": "theqoo-fetcher",
+  "type": "module",
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "^1.46.0"
   },
-  scripts {
-    start node index.js
+  "scripts": {
+    "start": "node index.js"
   }
 }
+
