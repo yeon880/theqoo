@@ -1,18 +1,28 @@
-# Playwright가 사전 설치된 공식 이미지 사용
-FROM mcr.microsoft.com/playwright:v1.44.1-jammy
+# Node.js 18 LTS slim 이미지 기반
+FROM node:18-slim
 
-# 작업 디렉터리 설정
+# Playwright 실행에 필요한 패키지 설치 + 한글 폰트 추가
+RUN apt-get update && apt-get install -y \
+  libnss3 libatk-bridge2.0-0 libgtk-3-0 libdrm2 libxkbcommon0 libgbm1 \
+  libasound2 libxshmfence1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+  libpango-1.0-0 libpangocairo-1.0-0 libcairo2 fonts-noto-cjk \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 작업 디렉토리 생성
 WORKDIR /app
 
-# package.json 및 package-lock.json 복사 후 의존성 설치
-COPY package.json package-lock.json* ./
+# 의존성 설치
+COPY package.json ./
 RUN npm install
 
-# 나머지 소스 코드 복사
+# 앱 소스 복사
 COPY . .
 
-# 환경 변수 설정 (필요 시 수정)
+# 🧩 playwright 브라우저 설치
+RUN npx playwright install --with-deps
+
+# 환경 설정
 ENV NODE_ENV=production
 
-# 앱 시작
+# 앱 실행
 CMD ["npm", "start"]
