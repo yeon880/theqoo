@@ -1,57 +1,160 @@
-import express from "express";
-import { chromium } from "playwright";
+import 'dotenv/config';
+import { chromium } from 'playwright';
+import fs from 'fs';
+import TelegramBot from 'node-telegram-bot-api';
 
-const app = express();
-app.use(express.json({ limit: "1mb" }));
+const {
+  TARGET_URL = 'https://theqoo.net/bl',
+  KEYWORDS = '',
+  POLL_INTERVAL_SEC = '300',
+  TELEGRAM_BOT_TOKEN,
+  TELEGRAM_CHAT_ID,
+  TIMEZONE = 'Asia/Seoul',
+  SEEN_FILE = './seen.json',
+} = process.env;
 
-// 간단 토큰 보호 (환경변수 FETCH_TOKEN)
-app.use((req, res, next) => {
-  const token = req.headers["x-fetch-token"];
-  if (!process.env.FETCH_TOKEN || token === process.env.FETCH_TOKEN) return next();
-  return res.status(401).json({ error: "unauthorized" });
-});
+const keywords = KEYWORDS.split(',').map(s => s.trim()).filter(Boolean);
+const pollMs = Math.max(60, parseInt(POLL_INTERVAL_SEC, 10)) * 1000;
+const bot = TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID
+  ? new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false })
+  : null;
 
-app.get("/healthz", (_, res) => res.send("ok"));
-
-// 전역 브라우저 1회 기동 후 재사용(가볍고 빠름)
-let browserPromise;
-async function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
+function loadSeen() {
+  try {
+    return new Set(JSON.parse(fs.readFileSync(SEEN_FILE, 'utf-8')));
+  } catch {
+    return new Set();
   }
-  return browserPromise;
+}
+function saveSeen(set) {
+  try {
+    fs.writeFileSync(SEEN_FILE, JSON.stringify([...set]), 'utf-8');
+  } catch {}
+}
+const seen = loadSeen();
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function notify(msg) {
+  if (!bot) return console.log('[NO-TELEGRAM]', msg);
+  await bot.sendMessage(TELEGRAM_CHAT_ID, msg, { disable_web_page_preview: true });
 }
 
-app.post("/fetch", async (req, res) => {
-  const { url, wait = "domcontentloaded", timeoutMs = 35000, waitMs = 8000 } = req.body || {};
-  if (!url) return res.status(400).json({ error: "url required" });
+function matchKeywords(title) {
+  if (keywords.length === 0) return true;
+  const t = title.toLowerCase();
+  return keywords.some(k => t.includes(k.toLowerCase()));
+}
 
-  const browser = await getBrowser();
-  const ctx = await browser.newContext({
-    locale: "ko-KR",
+async function extractPosts(page) {
+  const selectors = [
+    'table.board-list a[href*="/bl/"]',
+    '.board-list a[href*="/bl/"]',
+    'a[href^="/bl/"].hx, a[href^="/bl/"].title, td.title a',
+    'a[href^="/bl/"]'
+  ];
+
+  for (const sel of selectors) {
+    const items = await page.$$eval(sel, (as) => {
+      const uniq = new Map();
+      for (const a of as) {
+        const title = (a.textContent || '').trim();
+        let href = a.getAttribute('href') || '';
+        if (!href || title.length < 2) continue;
+        if (href.startsWith('/')) href = location.origin + href;
+        const id = href.split('?')[0];
+        if (!uniq.has(id)) {
+          uniq.set(id, { id, title, url: href });
+        }
+      }
+      return [...uniq.values()];
+    }).catch(() => []);
+
+    if (items.length > 5) return items;
+  }
+  return [];
+}
+
+async function openAndWait(page, url) {
+  const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+
+  const cfText = '잠시만 기다려주세요';
+  const hasCF = await page.locator(`text=${cfText}`).count().catch(() => 0);
+  if (hasCF) {
+    console.log('[CF] 보안 검사중 감지 → 대기 중...');
+    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+  }
+
+  const ok = await Promise.any([
+    page.waitForSelector('table.board-list', { timeout: 30_000 }),
+    page.waitForSelector('a[href*="/bl/"]', { timeout: 30_000 })
+  ]).then(() => true).catch(() => false);
+
+  if (!ok) console.log('[WARN] 리스트 셀렉터가 안 잡힘');
+  return resp;
+}
+
+async function runOnce(browser) {
+  const context = await browser.newContext({
     userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    viewport: { width: 1366, height: 900 },
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+    locale: 'ko-KR',
+    timezoneId: TIMEZONE,
   });
+  const page = await context.newPage();
 
   try {
-    const page = await ctx.newPage();
-    await page.goto(url, { waitUntil: wait, timeout: timeoutMs });
-    await page.waitForTimeout(waitMs); // Cloudflare 검사 대기
-    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+    await openAndWait(page, TARGET_URL);
+    await sleep(1000 + Math.random() * 1000);
 
-    const html = await page.content();
-    res.json({ html, finalUrl: page.url() });
+    const posts = await extractPosts(page);
+    if (posts.length === 0) {
+      console.log('[INFO] 글이 0개로 파싱됨');
+      return;
+    }
+
+    const head = posts.slice(0, 40);
+    const hits = head.filter(p => matchKeywords(p.title) && !seen.has(p.id));
+
+    for (const p of hits) {
+      seen.add(p.id);
+
+      const matchedKeyword = keywords.find(k => p.title.toLowerCase().includes(k.toLowerCase()));
+      let msg = '';
+
+      if (matchedKeyword === '도둑들') {
+        msg = `🐣 ${p.title}`;
+      } else {
+        msg = `🌰 ${p.title}\n${p.url}`;
+      }
+
+      console.log('[ALERT]', msg);
+      await notify(msg);
+    }
+
+    if (hits.length) saveSeen(seen);
+    else console.log('[INFO] 신규 매칭 없음');
+
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    console.error('[ERROR]', e?.message || e);
   } finally {
-    await ctx.close();
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
   }
-});
+}
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("theqoo-fetcher on", port));
+async function main() {
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--disable-dev-shm-usage', '--no-sandbox']
+  });
+
+  console.log(`[START] Monitoring ${TARGET_URL} every ${pollMs / 1000}s`);
+  await runOnce(browser);
+  setInterval(() => runOnce(browser), pollMs);
+}
+
+main().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
