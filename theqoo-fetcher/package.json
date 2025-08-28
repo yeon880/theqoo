@@ -1,33 +1,14 @@
 {
-  "name": "theqoo-monitor",
+  "name": "theqoo-fetcher",
   "version": "1.0.0",
   "type": "module",
-  "description": "더쿠 블라 게시판 키워드 모니터링 자동화 봇",
+  "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "install-browsers": "npx playwright install --with-deps chromium",
-    "prepare": "npm run install-browsers"
+    "start": "node index.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "node-telegram-bot-api": "^0.66.0",
-    "playwright": "^1.47.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "keywords": [
-    "playwright",
-    "crawler",
-    "더쿠",
-    "monitoring",
-    "telegram",
-    "railway"
-  ],
-  "author": "도사원",
-  "license": "MIT"
+    "dotenv": "^16.3.1",
+    "node-telegram-bot-api": "^0.61.0",
+    "playwright": "^1.44.0"
+  }
 }
