@@ -47,32 +47,59 @@ function matchKeywords(title) {
 }
 
 async function extractPosts(page) {
-  const selectors = [
-    'table.board-list a[href*="/bl/"]',
-    '.board-list a[href*="/bl/"]',
-    'a[href^="/bl/"].hx, a[href^="/bl/"].title, td.title a',
-    'a[href^="/bl/"]'
-  ];
+  const html = await page.content();
+  const posts = [];
 
-  for (const sel of selectors) {
-    const items = await page.$$eval(sel, (as) => {
-      const uniq = new Map();
-      for (const a of as) {
-        const title = (a.textContent || '').trim();
-        let href = a.getAttribute('href') || '';
-        if (!href || title.length < 2) continue;
-        if (href.startsWith('/')) href = location.origin + href;
-        const id = href.split('?')[0];
-        if (!uniq.has(id)) {
-          uniq.set(id, { id, title, url: href });
-        }
+  const allPostsPattern = /<td class="title">.*?<a href="([^"]+)"[^>]*>(.*?)<\/a>(?:(?!<\/td>).)*<\/td>/gs;
+  const matches = [...html.matchAll(allPostsPattern)];
+
+  for (let i = 0; i < matches.length && i < 30; i++) {
+    const match = matches[i];
+    const fullMatch = match[0];
+
+    const linkPattern = /<a href="([^"]+)"[^>]*>(.*?)<\/a>/g;
+    const links = [...fullMatch.matchAll(linkPattern)];
+
+    let mainUrl = '';
+    let mainTitle = '';
+    let preface = '';
+
+    for (const link of links) {
+      const url = link[1];
+      const content = link[2];
+
+      if (link[0].includes("class='preface'") || link[0].includes('class="preface"')) {
+        preface = content.replace(/<[^>]*>/g, '').trim();
+      } else if (!mainUrl && url) {
+        mainUrl = url.trim();
+        mainTitle = content.trim();
       }
-      return [...uniq.values()];
-    }).catch(() => []);
+    }
 
-    if (items.length > 5) return items;
+    if (mainUrl && mainTitle) {
+      const cleanTitle = mainTitle
+        .replace(/<[^>]*>/g, '')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (cleanTitle && cleanTitle.length > 1) {
+        const fullTitle = preface ? `[${preface}] ${cleanTitle}` : cleanTitle;
+        posts.push({
+          id: `https://theqoo.net${mainUrl}`.split('?')[0],
+          title: fullTitle,
+          url: `https://theqoo.net${mainUrl}`,
+        });
+      }
+    }
   }
-  return [];
+
+  console.log(`[INFO] ${posts.length}개 게시글 파싱됨`);
+  return posts;
 }
 
 async function openAndWait(page, url) {
@@ -85,12 +112,6 @@ async function openAndWait(page, url) {
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
   }
 
-  const ok = await Promise.any([
-    page.waitForSelector('table.board-list', { timeout: 30_000 }),
-    page.waitForSelector('a[href*="/bl/"]', { timeout: 30_000 })
-  ]).then(() => true).catch(() => false);
-
-  if (!ok) console.log('[WARN] 리스트 셀렉터가 안 잡힘');
   return resp;
 }
 
@@ -118,7 +139,6 @@ async function runOnce(browser) {
 
     for (const p of hits) {
       seen.add(p.id);
-
       const matchedKeyword = keywords.find(k => p.title.toLowerCase().includes(k.toLowerCase()));
       let msg = '';
 
