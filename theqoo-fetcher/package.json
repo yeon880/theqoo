@@ -6,7 +6,7 @@
     "playwright": "^1.46.0"
   },
   "scripts": {
+    "postinstall": "npx playwright install --with-deps chromium",
     "start": "node index.js"
   }
 }
-
