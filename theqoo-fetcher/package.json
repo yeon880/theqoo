@@ -2,10 +2,12 @@
   "name": "theqoo-monitor",
   "version": "1.0.0",
   "type": "module",
+  "description": "더쿠 블라 게시판 키워드 모니터링 자동화 봇",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "install-browsers": "npx playwright install chromium"
+    "install-browsers": "npx playwright install --with-deps chromium",
+    "prepare": "npm run install-browsers"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -17,5 +19,15 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "keywords": [
+    "playwright",
+    "crawler",
+    "더쿠",
+    "monitoring",
+    "telegram",
+    "railway"
+  ],
+  "author": "도사원",
+  "license": "MIT"
 }
