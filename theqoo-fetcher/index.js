@@ -26,18 +26,23 @@ function loadSeen() {
     return new Set();
   }
 }
+
 function saveSeen(set) {
   try {
     fs.writeFileSync(SEEN_FILE, JSON.stringify([...set]), 'utf-8');
   } catch {}
 }
-const seen = loadSeen();
 
+const seen = loadSeen();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function notify(msg) {
   if (!bot) return console.log('[NO-TELEGRAM]', msg);
-  await bot.sendMessage(TELEGRAM_CHAT_ID, msg, { disable_web_page_preview: true });
+  try {
+    await bot.sendMessage(TELEGRAM_CHAT_ID, msg, { disable_web_page_preview: true });
+  } catch (error) {
+    console.error('[TELEGRAM ERROR]', error.message);
+  }
 }
 
 function matchKeywords(title) {
@@ -103,28 +108,43 @@ async function extractPosts(page) {
 }
 
 async function openAndWait(page, url) {
-  const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  try {
+    const resp = await page.goto(url, { 
+      waitUntil: 'domcontentloaded', 
+      timeout: 30_000  // 타임아웃 단축
+    });
 
-  const cfText = '잠시만 기다려주세요';
-  const hasCF = await page.locator(`text=${cfText}`).count().catch(() => 0);
-  if (hasCF) {
-    console.log('[CF] 보안 검사중 감지 → 대기 중...');
-    await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    // CF 챌린지 감지 및 대기
+    const cfText = '잠시만 기다려주세요';
+    const hasCF = await page.locator(`text=${cfText}`).count().catch(() => 0);
+    if (hasCF) {
+      console.log('[CF] 보안 검사중 감지 → 대기 중...');
+      await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+      await sleep(3000); // CF 처리 추가 대기
+    }
+
+    return resp;
+  } catch (error) {
+    console.error('[PAGE ERROR]', error.message);
+    throw error;
   }
-
-  return resp;
 }
 
 async function runOnce(browser) {
-  const context = await browser.newContext({
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
-    locale: 'ko-KR',
-    timezoneId: TIMEZONE,
-  });
-  const page = await context.newPage();
-
+  let context;
+  let page;
+  
   try {
+    context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+      locale: 'ko-KR',
+      timezoneId: TIMEZONE,
+      // 메모리 사용량 최적화
+      viewport: { width: 1280, height: 720 },
+    });
+    
+    page = await context.newPage();
+
     await openAndWait(page, TARGET_URL);
     await sleep(1000 + Math.random() * 1000);
 
@@ -158,23 +178,60 @@ async function runOnce(browser) {
   } catch (e) {
     console.error('[ERROR]', e?.message || e);
   } finally {
-    await page.close().catch(() => {});
-    await context.close().catch(() => {});
+    // 리소스 정리
+    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
   }
 }
 
 async function main() {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--disable-dev-shm-usage', '--no-sandbox']
-  });
+  let browser;
+  
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--no-first-run',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--memory-pressure-off',  // 메모리 압박 방지
+        '--max_old_space_size=512' // 메모리 제한
+      ]
+    });
 
-  console.log(`[START] Monitoring ${TARGET_URL} every ${pollMs / 1000}s`);
-  await runOnce(browser);
-  setInterval(() => runOnce(browser), pollMs);
+    console.log(`[START] Monitoring ${TARGET_URL} every ${pollMs / 1000}s`);
+    
+    // 첫 실행
+    await runOnce(browser);
+    
+    // 정기 실행
+    setInterval(async () => {
+      try {
+        await runOnce(browser);
+      } catch (error) {
+        console.error('[INTERVAL ERROR]', error.message);
+      }
+    }, pollMs);
+
+  } catch (err) {
+    console.error('[BROWSER ERROR]', err);
+    if (browser) await browser.close().catch(() => {});
+    process.exit(1);
+  }
 }
 
+// 프로세스 종료 시 정리
+process.on('SIGINT', async () => {
+  console.log('[SHUTDOWN] Gracefully shutting down...');
+  process.exit(0);
+});
+
 main().catch(err => {
-  console.error(err);
+  console.error('[MAIN ERROR]', err);
   process.exit(1);
 });
