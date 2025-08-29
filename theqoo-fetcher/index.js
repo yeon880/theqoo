@@ -54,17 +54,26 @@ function matchKeywords(title) {
 async function extractPosts(page) {
   const html = await page.content();
   
-  // 디버깅: HTML 일부 출력
+  // 디버깅: HTML 상태 확인
   console.log('[DEBUG] HTML 길이:', html.length);
   console.log('[DEBUG] title 클래스 포함 여부:', html.includes('class="title"'));
-  console.log('[DEBUG] HTML 첫 500자:', html.substring(0, 500));
+  console.log('[DEBUG] HTML에 게시글 관련 요소 확인:', {
+    hasTable: html.includes('<table'),
+    hasTd: html.includes('<td'),
+    hasTitle: html.includes('title'),
+    hasHref: html.includes('href=')
+  });
+  
+  // HTML 샘플 출력 (문제 진단용)
+  const htmlSample = html.substring(0, 1000);
+  console.log('[DEBUG] HTML 첫 1000자:', htmlSample);
   
   const posts = [];
 
   const allPostsPattern = /<td class="title">.*?<a href="([^"]+)"[^>]*>(.*?)<\/a>(?:(?!<\/td>).)*<\/td>/gs;
   const matches = [...html.matchAll(allPostsPattern)];
   
-  console.log('[DEBUG] 패턴 매칭 결과:', matches.length, '개');
+  console.log('[DEBUG] 정규식 패턴 매칭 결과:', matches.length, '개');
 
   for (let i = 0; i < matches.length && i < 30; i++) {
     const match = matches[i];
