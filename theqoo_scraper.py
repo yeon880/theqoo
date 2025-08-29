@@ -12,9 +12,13 @@ TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"
 # 더쿠 게시판 URL
 BOARD_URL = "https://theqoo.net/bl"
 # 감시할 키워드 목록
-KEYWORDS = ["밤식", "범식", "도둑들"]
+KEYWORDS = ["도둑들", "밤식", "범식"]
 # 스크래핑 주기 (분 단위)
 SCRAPING_INTERVAL_MINUTES = 5
+
+# 새로운 재시도 관련 설정
+MAX_RETRIES = 3
+RETRY_INTERVAL_SECONDS = 60
 
 # 텔레그램 봇 초기화
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
@@ -78,7 +82,7 @@ def check_for_new_posts():
     posts = get_latest_posts(BOARD_URL)
     if not posts:
         print("게시글을 가져올 수 없습니다.")
-        return
+        return False # 실패를 알립니다.
 
     # 최신 게시글부터 확인하기 위해 리스트를 뒤집습니다.
     posts.reverse()
@@ -112,6 +116,24 @@ def check_for_new_posts():
     elif posts:
         # 새로운 글이 없더라도 목록의 가장 최신 글을 저장하여 다음번 확인 시 중복을 방지합니다.
         last_checked_title = posts[-1]['title']
+        
+    return True # 성공을 알립니다.
+
+def run_scraper():
+    """
+    스크래퍼를 실행하고 실패 시 재시도합니다.
+    """
+    retry_count = 0
+    while retry_count < MAX_RETRIES:
+        if check_for_new_posts():
+            return # 성공 시 함수 종료
+        
+        print(f"스크래핑 실패. {RETRY_INTERVAL_SECONDS}초 후 재시도합니다... ({retry_count + 1}/{MAX_RETRIES})")
+        time.sleep(RETRY_INTERVAL_SECONDS)
+        retry_count += 1
+    
+    print("최대 재시도 횟수를 초과했습니다. 다음 예정된 시간에 다시 시도합니다.")
+
 
 def main():
     """
@@ -119,10 +141,10 @@ def main():
     """
     # 최초 실행
     print("최초 실행: 게시판을 확인합니다.")
-    check_for_new_posts()
+    run_scraper()
     
-    # 5분마다 check_for_new_posts 함수 실행 예약
-    schedule.every(SCRAPING_INTERVAL_MINUTES).minutes.do(check_for_new_posts)
+    # 5분마다 run_scraper 함수 실행 예약
+    schedule.every(SCRAPING_INTERVAL_MINUTES).minutes.do(run_scraper)
     
     print(f"프로그램이 {SCRAPING_INTERVAL_MINUTES}분마다 실행되도록 예약되었습니다.")
     while True:
