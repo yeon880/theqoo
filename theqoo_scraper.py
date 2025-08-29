@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"
 # 더쿠 게시판 URL
 BOARD_URL = "https://theqoo.net/bl"
 # 감시할 키워드 목록
-KEYWORDS = ["도둑들", "밤식", "범식"]
+KEYWORDS = ["밤식", "범식", "도둑들"]
 # 스크래핑 주기 (분 단위)
 SCRAPING_INTERVAL_MINUTES = 5
 
@@ -27,8 +27,13 @@ def get_latest_posts(url):
     """
     더쿠 게시판에서 최신 게시글 목록을 가져옵니다.
     """
+    # User-Agent를 추가하여 봇이 아닌 것처럼 보이게 합니다.
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
     try:
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        response = requests.get(url, headers=headers)
         response.raise_for_status() # HTTP 오류가 발생하면 예외를 일으킵니다.
         soup = BeautifulSoup(response.text, 'html.parser')
         
