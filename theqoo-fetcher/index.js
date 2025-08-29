@@ -53,10 +53,18 @@ function matchKeywords(title) {
 
 async function extractPosts(page) {
   const html = await page.content();
+  
+  // 디버깅: HTML 일부 출력
+  console.log('[DEBUG] HTML 길이:', html.length);
+  console.log('[DEBUG] title 클래스 포함 여부:', html.includes('class="title"'));
+  console.log('[DEBUG] HTML 첫 500자:', html.substring(0, 500));
+  
   const posts = [];
 
   const allPostsPattern = /<td class="title">.*?<a href="([^"]+)"[^>]*>(.*?)<\/a>(?:(?!<\/td>).)*<\/td>/gs;
   const matches = [...html.matchAll(allPostsPattern)];
+  
+  console.log('[DEBUG] 패턴 매칭 결과:', matches.length, '개');
 
   for (let i = 0; i < matches.length && i < 30; i++) {
     const match = matches[i];
@@ -120,7 +128,7 @@ async function openAndWait(page, url) {
     if (hasCF) {
       console.log('[CF] 보안 검사중 감지 → 대기 중...');
       await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
-      await sleep(3000); // CF 처리 추가 대기
+      await sleep(5000); // 3초 → 5초로 증가
     }
 
     return resp;
@@ -199,8 +207,10 @@ async function main() {
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding',
-        '--memory-pressure-off',  // 메모리 압박 방지
-        '--max_old_space_size=512' // 메모리 제한
+        '--disable-web-security',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--memory-pressure-off'
       ]
     });
 
