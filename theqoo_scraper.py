@@ -22,6 +22,8 @@ RETRY_INTERVAL_SECONDS = 60
 
 # 텔레그램 봇 초기화
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+# 세션 초기화
+session = requests.Session()
 
 # 마지막으로 확인한 게시글의 제목을 저장하기 위한 변수
 # 중복 알림을 방지하기 위해 사용됩니다.
@@ -31,13 +33,15 @@ def get_latest_posts(url):
     """
     더쿠 게시판에서 최신 게시글 목록을 가져옵니다.
     """
-    # User-Agent를 추가하여 봇이 아닌 것처럼 보이게 합니다.
+    # User-Agent와 Referer 헤더를 추가하여 봇이 아닌 것처럼 보이게 합니다.
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': 'https://theqoo.net/'
     }
     
     try:
-        response = requests.get(url, headers=headers)
+        # requests.get 대신 session.get을 사용합니다.
+        response = session.get(url, headers=headers)
         response.raise_for_status() # HTTP 오류가 발생하면 예외를 일으킵니다.
         soup = BeautifulSoup(response.text, 'html.parser')
         
